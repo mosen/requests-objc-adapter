@@ -40,6 +40,10 @@ def _build_NSRequest(request, timeout):
         NSURL.URLWithString_(request.url)
     )
     nsrequest.setHTTPMethod_(request.method)
+
+    # if request.body is not None:  # Non multipart only
+    #     nsrequest.setHTTPBody_(request.body)
+
     if timeout is not None:
         nsrequest.timeoutInterval = float(timeout)
 
@@ -134,15 +138,20 @@ class NSURLSessionAdapter(BaseAdapter):
         """
         nsrequest = _build_NSRequest(request, timeout)
 
+
         # TODO: Support all of this stuff.
-        assert not request.body
         assert not stream
-        assert verify
+        assert verify  # see https://developer.apple.com/library/content/documentation/NetworkingInternet/Conceptual/NetworkingTopics/Articles/OverridingSSLChainValidationCorrectly.html#//apple_ref/doc/uid/TP40012544-SW6
         assert not cert
         assert not proxies
 
         self._queue = Queue()
-        task = self._session.dataTaskWithRequest_(nsrequest)
+        if request.method in ['PUT', 'POST']:
+            # These verbs should usually be an upload task to send the correct request headers.
+            task = self._session.uploadTaskWithRequest_fromData_(nsrequest, request.body)
+        else:
+            task = self._session.dataTaskWithRequest_(nsrequest)
+
         task.resume()
 
         response, error = self._queue.get()
