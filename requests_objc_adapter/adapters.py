@@ -9,9 +9,10 @@ from requests.models import Response
 
 from Foundation import NSMutableURLRequest, NSURL, NSURLRequestUseProtocolCachePolicy, \
     NSURLRequestReloadIgnoringLocalCacheData, NSURLRequestReturnCacheDataElseLoad, \
-    NSURLSessionConfiguration, NSURLSession, NSOperationQueue
+    NSURLSessionConfiguration, NSURLSession, NSOperationQueue, NSURLCredential, \
+    NSURLCredentialPersistenceNone
 
-from delegates import RequestsNSURLSessionDataDelegate
+from delegates import RequestsNSURLSessionDelegate
 
 # These headers are reserved to the NSURLSession and should not be set by
 # Requests, though we may use them.
@@ -24,6 +25,7 @@ try:
     from Queue import Queue
 except ImportError:  #py3
     from queue import Queue
+
 
 def _build_NSRequest(request, timeout):
     """
@@ -41,9 +43,6 @@ def _build_NSRequest(request, timeout):
     )
     nsrequest.setHTTPMethod_(request.method)
 
-    # if request.body is not None:  # Non multipart only
-    #     nsrequest.setHTTPBody_(request.body)
-
     if timeout is not None:
         nsrequest.timeoutInterval = float(timeout)
 
@@ -56,6 +55,24 @@ def _build_NSRequest(request, timeout):
         nsrequest.setValue_forHTTPHeaderField_(v, k)
 
     return nsrequest
+
+
+def _build_NSURLCredential(auth):
+    """
+    Convert an instance of requests.auth.* into an instance of NSURLCredential.
+
+    Args:
+        auth: requests.auth.HTTPBasicAuth|requests.auth.HTTPDigestAuth
+    Returns:
+        NSURLCredential instance
+    """
+    credential = NSURLCredential.credentialWithUser_password_persistence_(
+        auth.username,
+        auth.password,
+        NSURLCredentialPersistenceNone  # we don't expect ephemeral requests to save keychain items.
+    )
+
+    return credential
 
 
 class NSURLSessionAdapter(BaseAdapter):
@@ -71,13 +88,18 @@ class NSURLSessionAdapter(BaseAdapter):
         self._session = None
         self._request = None
         self._queue = None
+        self._verify = False
         
         self._initialize_session()
+
+    @property
+    def verify(self):
+        return self._verify
 
     def _initialize_session(self):
         """Set up the NSURLSessionConfiguration"""
         configuration = NSURLSessionConfiguration.defaultSessionConfiguration()
-        self._delegate = RequestsNSURLSessionDataDelegate.alloc().initWithAdapter_(self)
+        self._delegate = RequestsNSURLSessionDelegate.alloc().initWithAdapter_(self)
         self._session = (
             NSURLSession.sessionWithConfiguration_delegate_delegateQueue_(
                 configuration,
@@ -137,11 +159,10 @@ class NSURLSessionAdapter(BaseAdapter):
         :rtype: requests.Response
         """
         nsrequest = _build_NSRequest(request, timeout)
-
+        self._verify = verify
 
         # TODO: Support all of this stuff.
         assert not stream
-        assert verify  # see https://developer.apple.com/library/content/documentation/NetworkingInternet/Conceptual/NetworkingTopics/Articles/OverridingSSLChainValidationCorrectly.html#//apple_ref/doc/uid/TP40012544-SW6
         assert not cert
         assert not proxies
 

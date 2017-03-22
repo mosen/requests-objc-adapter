@@ -17,3 +17,4 @@ def test_post():
 
     payload = {'key1': 'value1', 'key2': 'value2'}
     session.post('http://localhost', data=payload)
+

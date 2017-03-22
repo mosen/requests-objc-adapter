@@ -3,8 +3,21 @@
 Defines the delegates for the Requests Transport Adapter that uses NSURLSession.
 """
 import objc
-from Cocoa import NSObject, NSURLSessionAuthChallengePerformDefaultHandling, NSURLSessionResponseAllow
+from Cocoa import NSObject, NSURLAuthenticationMethodServerTrust, NSURLAuthenticationMethodHTTPBasic, NSURLCredential
 
+# objc.registerMetaDataForSelector('NSURLSessionTaskDelegate', 'URLSession:task:didReceiveChallenge:completionHandler:', {
+#     "arguments": {
+#         3: {
+#             "callable": {
+#                 "arguments": {
+#                     "0": { "typestr": "^v" },
+#                     "1": { "typestr": [ "I", "Q" ] }
+#                 },
+#                 "retval": { "typestr": "v" }
+#             }
+#         }
+#     }
+# })
 
 class RequestsNSURLSessionDelegate(NSObject):
     """
@@ -22,10 +35,6 @@ class RequestsNSURLSessionDelegate(NSObject):
         # to handle things.
         self._adapter = adapter
         return self
-    
-
-class RequestsNSURLSessionTaskDelegate(RequestsNSURLSessionDelegate):
-    """This object implements the delegate methods for the NSURLSessionTaskDelegate"""
 
     def URLSession_task_didReceiveChallenge_completionHandler_(self, session,
                                                                task, challenge,
@@ -51,9 +60,19 @@ class RequestsNSURLSessionTaskDelegate(RequestsNSURLSessionDelegate):
             NSURLSessionAuthChallengeDisposition, second is of NSURLCredential.
         :returns: Nothing
         """
+        protection_space = challenge.protectionSpace()
+        if protection_space.authenticationMethod == NSURLAuthenticationMethodServerTrust:
+            if not self._adapter.verify:
+                trust = protection_space.serverTrust()
+                credential = NSURLCredential.credentialForTrust_(trust)
+                handler(1, credential)
+
+        # elif protection_space.authenticationMethod == NSURLAuthenticationMethodHTTPBasic:
+        #     handler()
+
         # TODO: Here we'll handle all of auth, verify, and cert. For now, just
         # do the default.
-        handler(NSURLSessionAuthChallengePerformDefaultHandling, None)
+        # handler(1, None)
 
     def URLSession_task_didCompleteWithError_(self, session, task, error):
         """
@@ -91,9 +110,6 @@ class RequestsNSURLSessionTaskDelegate(RequestsNSURLSessionDelegate):
         """
         handler(None)
 
-class RequestsNSURLSessionDataDelegate(RequestsNSURLSessionTaskDelegate):
-    """This object implements the NSURLSessionDataDelegate delegate protocol"""
-
     def URLSession_dataTask_didReceiveResponse_completionHandler_(self,
                                                                   session,
                                                                   dataTask,
@@ -124,6 +140,6 @@ class RequestsNSURLSessionDataDelegate(RequestsNSURLSessionTaskDelegate):
         :returns: Nothing.
         """
         self._adapter.receive_response(dataTask, response)
-        handler(NSURLSessionResponseAllow)
+        #handler(NSURLSessionResponseAllow)
 
 
